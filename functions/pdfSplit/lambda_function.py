@@ -9,7 +9,6 @@ import urllib.parse
 
 # 외부 라이브러리 (Lambda layer 추가 필요)
 import boto3
-import botocore
 import requests
 from PyPDF2 import PdfReader, PdfWriter
 
