@@ -10,7 +10,7 @@ import urllib.parse
 # 외부 라이브러리
 import boto3
 import requests
-from PyPDF2 import PdfReader, PdfWriter
+from pypdf import PdfReader, PdfWriter
 
 s3 = boto3.client('s3')
 INTERNAL_TOKEN = os.environ.get('INTERNAL_WEB_TOKEN')
@@ -37,7 +37,7 @@ def lambda_handler(event, context):
             "Content-Type": "application/json"
         }
         # 암호화 여부 체크
-        if reader.is_encrypted:
+        if reader.is_encrypted and reader.decrypt('') == 0:
             print("PDF is encrypted")
             print("fileKey: " + key)
             error_payload = {
