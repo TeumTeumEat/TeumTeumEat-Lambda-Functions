@@ -73,9 +73,15 @@ def lambda_handler(event, context):
                     full_text.append(" ".join([field.get("inferText", "") for field in img["fields"]]))
 
         # 백엔드 웹훅으로 결과 전송
-        fileKey = re.sub(r'_part_\d+', '', key.removeprefix("split/"))
+        if env != "origin":
+            fileKey = re.sub(r'_part_\d+', '', key.removeprefix(f"{env}/split/"))
+            fileKey = f"{env}/origin/{fileKey}"
+        else:
+            fileKey = re.sub(r'_part_\d+', '', key.removeprefix("split/"))
+            fileKey = f"origin/{fileKey}"
+
         callback_payload = {
-            "fileKey": f"origin/{fileKey}",
+            "fileKey": fileKey,
             "ocrText": ''.join(full_text),
             "partIndex": key.split('_part_')[-1].replace('.pdf', '') # 순서 맞추기용
             # "success": True

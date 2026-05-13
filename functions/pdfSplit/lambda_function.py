@@ -157,7 +157,10 @@ def lambda_handler(event, context):
                 output_buffer.seek(0)
 
                 # S3 업로드
-                output_key = f"split/{filename}_part_{start // 10}.pdf"
+                if env != "origin":
+                    output_key = f"{env}/split/{filename}_part_{start // 10}.pdf"
+                else:
+                    output_key = f"split/{filename}_part_{start // 10}.pdf"
                 s3.put_object(
                     Bucket=bucket,
                     Key=output_key,
