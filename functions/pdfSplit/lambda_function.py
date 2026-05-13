@@ -14,14 +14,21 @@ from pypdf import PdfReader, PdfWriter
 
 s3 = boto3.client('s3')
 INTERNAL_TOKEN = os.environ.get('INTERNAL_WEB_TOKEN')
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+WEBHOOK_URLS = {
+    'prod': os.environ.get('WEBHOOK_URL'),
+    'dev':  os.environ.get('DEV_WEBHOOK_URL'),
+}
 
 def lambda_handler(event, context):
     try:
         # S3 이벤트 정보 추출
         bucket = event['Records'][0]['s3']['bucket']['name']
-        key = event['Records'][0]['s3']['object']['key'] # origin/6d972bcb-b207-4c33-ac47-7816f4fafbc0_11강_Stochastic_methods.pdf
+        key = event['Records'][0]['s3']['object']['key'] # {env}/origin/6d972bcb-b207-4c33-ac47-7816f4fafbc0_11강_Stochastic_methods.pdf
         key = urllib.parse.unquote_plus(key)
+
+        env = key.split('/')[0]  # 'dev' or 'prod' or 'origin'(레거시, 제거 예정)
+        WEBHOOK_URL = WEBHOOK_URLS.get(env, WEBHOOK_URLS['prod'])
+
         filename = key.split('/')[-1].replace(".pdf", "")
         origin_file_name = filename.split('_', 1)[1]
 

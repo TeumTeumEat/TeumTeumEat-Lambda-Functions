@@ -14,14 +14,20 @@ s3 = boto3.client('s3')
 OCR_URL = os.environ.get('NAVER_OCR_URL')
 SECRET_KEY = os.environ.get('NAVER_OCR_SECRET_KEY')
 INTERNAL_TOKEN = os.environ.get('INTERNAL_WEB_TOKEN')
-WEBHOOK_URL = os.environ.get('WEBHOOK_URL')
+WEBHOOK_URLS = {
+    'prod': os.environ.get('WEBHOOK_URL'),
+    'dev':  os.environ.get('DEV_WEBHOOK_URL'),
+}
 
 def lambda_handler(event, context):
     try:
         # S3 이벤트에서 분할된 파일 정보 추출
         bucket = event['Records'][0]['s3']['bucket']['name']
-        raw_key = event['Records'][0]['s3']['object']['key']  # split/6d972bcb-b207-4c33-ac47-7816f4fafbc0_11강_Stochastic_methods_part_1.pdf
+        raw_key = event['Records'][0]['s3']['object']['key']  # {env}/split/6d972bcb-b207-4c33-ac47-7816f4fafbc0_11강_Stochastic_methods_part_1.pdf
         key = urllib.parse.unquote_plus(raw_key)
+
+        env = key.split('/')[0]  # 'dev' or 'prod' or 'origin'(레거시, 제거 예정)
+        WEBHOOK_URL = WEBHOOK_URLS.get(env, WEBHOOK_URLS['prod'])
 
         # 파일의 S3 URL 생성 (네이버 OCR에 전달할 경로)
         # S3 객체가 공개되어 있지 않다면 Presigned URL을 쓰거나
