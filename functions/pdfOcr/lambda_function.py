@@ -73,7 +73,7 @@ def lambda_handler(event, context):
                     full_text.append(" ".join([field.get("inferText", "") for field in img["fields"]]))
 
         # 백엔드 웹훅으로 결과 전송
-        if env != "origin":
+        if env != "split":
             fileKey = re.sub(r'_part_\d+', '', key.removeprefix(f"{env}/split/"))
             fileKey = f"{env}/origin/{fileKey}"
         else:
