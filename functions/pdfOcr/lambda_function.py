@@ -74,14 +74,14 @@ def lambda_handler(event, context):
 
         # 백엔드 웹훅으로 결과 전송
         if env != "split":
-            key = re.sub(r'_part_\d+', '', key.removeprefix(f"{env}/split/"))
-            key = f"{env}/origin/{key}"
+            fileKey = re.sub(r'_part_\d+', '', key.removeprefix(f"{env}/split/"))
+            fileKey = f"{env}/origin/{fileKey}"
         else:
-            key = re.sub(r'_part_\d+', '', key.removeprefix("split/"))
-            key = f"origin/{key}"
+            fileKey = re.sub(r'_part_\d+', '', key.removeprefix("split/"))
+            fileKey = f"origin/{fileKey}"
 
         callback_payload = {
-            "fileKey": key,
+            "fileKey": fileKey,
             "ocrText": ''.join(full_text),
             "partIndex": key.split('_part_')[-1].replace('.pdf', '') # 순서 맞추기용
             # "success": True
