@@ -16,6 +16,10 @@ export const handler = async (event) => {
 
   if (response.status !== '200') return response;
 
+  // Skip non-images before downloading them from S3
+  const contentType = response.headers['content-type']?.[0]?.value ?? '';
+  if (!contentType.startsWith('image/')) return response;
+
   const params = parseParams(request.querystring);
   if (!params) return response;
 
