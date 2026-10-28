@@ -9,6 +9,9 @@ const FORMATS = new Set(['jpeg', 'png', 'webp']);
 const TARGET_FORMATS = new Set(['webp']);
 // Generated responses are capped at 1MB including headers
 const MAX_BODY_BYTES = 1000 * 1000;
+// Already-lossy sources this large rarely fit in 1MB unless resized, so skip them up front
+const LOSSY_TYPES = new Set(['image/jpeg', 'image/webp']);
+const MAX_LOSSY_SOURCE_BYTES_WITHOUT_RESIZE = 1.5 * 1024 * 1024;
 
 const s3Clients = new Map();
 
@@ -23,6 +26,10 @@ export const handler = async (event) => {
 
   const params = parseParams(request.querystring);
   if (!params) return response;
+
+  const contentLength = Number(response.headers['content-length']?.[0]?.value);
+  if (!params.width && !params.height && LOSSY_TYPES.has(contentType)
+    && contentLength > MAX_LOSSY_SOURCE_BYTES_WITHOUT_RESIZE) return response;
 
   const origin = request.origin?.s3;
   const location = origin && parseS3Domain(origin.domainName);
