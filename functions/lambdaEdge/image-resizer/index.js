@@ -4,8 +4,9 @@ import sharp from 'sharp';
 // Lambda@Edge does not support environment variables, so limits live here
 const MAX_DIMENSION = 4096;
 const DEFAULT_QUALITY = 80;
-const FORMATS = new Set(['jpeg', 'png', 'webp', 'avif']);
-const FORMAT_ALIASES = { jpg: 'jpeg' };
+// Formats we re-encode as-is when resizing; f= only converts to webp
+const FORMATS = new Set(['jpeg', 'png', 'webp']);
+const TARGET_FORMATS = new Set(['webp']);
 // Generated responses are capped at 1MB including headers
 const MAX_BODY_BYTES = 1000 * 1000;
 
@@ -68,10 +69,10 @@ export function parseParams(querystring) {
   const width = w === null ? undefined : toInt(w, MAX_DIMENSION);
   const height = h === null ? undefined : toInt(h, MAX_DIMENSION);
   const quality = q === null ? DEFAULT_QUALITY : toInt(q, 100);
-  const format = f === null ? undefined : (FORMAT_ALIASES[f] ?? f);
+  const format = f === null ? undefined : f;
 
   if (Number.isNaN(width) || Number.isNaN(height) || Number.isNaN(quality)) return null;
-  if (format !== undefined && !FORMATS.has(format)) return null;
+  if (format !== undefined && !TARGET_FORMATS.has(format)) return null;
 
   return { width, height, format, quality };
 }
