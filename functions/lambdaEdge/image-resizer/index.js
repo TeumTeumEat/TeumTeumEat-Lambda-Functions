@@ -4,10 +4,16 @@ import sharp from 'sharp';
 // Lambda@Edge does not support environment variables, so limits live here
 const MAX_DIMENSION = 4096;
 const DEFAULT_QUALITY = 80;
-const FORMATS = new Set(['jpeg', 'png', 'webp', 'avif']);
-const FORMAT_ALIASES = { jpg: 'jpeg' };
+// Formats we re-encode as-is when resizing; f= only converts to webp
+const FORMATS = new Set(['jpeg', 'png', 'webp']);
+const TARGET_FORMATS = new Set(['webp']);
 // Generated responses are capped at 1MB including headers
 const MAX_BODY_BYTES = 1000 * 1000;
+// Already-lossy sources this large rarely fit in 1MB unless resized, so skip them up front
+const LOSSY_TYPES = new Set(['image/jpeg', 'image/webp']);
+const MAX_LOSSY_SOURCE_BYTES_WITHOUT_RESIZE = 1.5 * 1024 * 1024;
+// CloudFront keeps images 30 days (invalidate to purge), browsers 1 day (can't be purged)
+const CACHE_CONTROL = 'public, max-age=86400, s-maxage=2592000';
 
 const s3Clients = new Map();
 
@@ -20,8 +26,15 @@ export const handler = async (event) => {
   const contentType = response.headers['content-type']?.[0]?.value ?? '';
   if (!contentType.startsWith('image/')) return response;
 
+  // Applies to originals and resized images alike; a Cache-Control set on the S3 object wins
+  response.headers['cache-control'] ??= [{ key: 'Cache-Control', value: CACHE_CONTROL }];
+
   const params = parseParams(request.querystring);
   if (!params) return response;
+
+  const contentLength = Number(response.headers['content-length']?.[0]?.value);
+  if (!params.width && !params.height && LOSSY_TYPES.has(contentType)
+    && contentLength > MAX_LOSSY_SOURCE_BYTES_WITHOUT_RESIZE) return response;
 
   const origin = request.origin?.s3;
   const location = origin && parseS3Domain(origin.domainName);
@@ -68,10 +81,10 @@ export function parseParams(querystring) {
   const width = w === null ? undefined : toInt(w, MAX_DIMENSION);
   const height = h === null ? undefined : toInt(h, MAX_DIMENSION);
   const quality = q === null ? DEFAULT_QUALITY : toInt(q, 100);
-  const format = f === null ? undefined : (FORMAT_ALIASES[f] ?? f);
+  const format = f === null ? undefined : f;
 
   if (Number.isNaN(width) || Number.isNaN(height) || Number.isNaN(quality)) return null;
-  if (format !== undefined && !FORMATS.has(format)) return null;
+  if (format !== undefined && !TARGET_FORMATS.has(format)) return null;
 
   return { width, height, format, quality };
 }
