@@ -52,3 +52,87 @@ jobs:
           aws lambda update-function-code \
             --function-name $FUNCTION_NAME \
             --zip-file fileb://function.zip > /dev/null
+
+  deploy-edge:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        function_dir: [image-resizer]
+    permissions:
+      id-token: write # Required for OIDC authentication
+      contents: read  # Required to check out the repository
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Check for changes in this function
+        id: check_changes
+        run: |
+          if git diff --name-only HEAD^ HEAD | grep "^functions/lambdaEdge/${{ matrix.function_dir }}/"; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+      - uses: actions/setup-node@v4
+        if: steps.check_changes.outputs.changed == 'true'
+        with:
+          node-version: 24
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1 # Lambda@Edge is only deployable in us-east-1
+
+      - name: Zip & Publish
+        id: publish
+        if: steps.check_changes.outputs.changed == 'true'
+        run: |
+          FUNCTION_NAME="${{ matrix.function_dir }}"
+          cd functions/lambdaEdge/${{ matrix.function_dir }}
+          npm ci --omit=dev
+          zip -qr $RUNNER_TEMP/function.zip . -x "package-lock.json"
+
+          aws lambda update-function-code \
+            --function-name $FUNCTION_NAME \
+            --zip-file fileb://$RUNNER_TEMP/function.zip > /dev/null
+          aws lambda wait function-updated --function-name $FUNCTION_NAME
+
+          # CloudFront only accepts a numbered version, not $LATEST
+          VERSION_ARN=$(aws lambda publish-version \
+            --function-name $FUNCTION_NAME \
+            --query FunctionArn --output text)
+          echo "Published $VERSION_ARN"
+          echo "version_arn=$VERSION_ARN" >> $GITHUB_OUTPUT
+
+      - name: Update CloudFront association
+        if: steps.check_changes.outputs.changed == 'true' && vars.CLOUDFRONT_DISTRIBUTION_ID != ''
+        env:
+          DISTRIBUTION_ID: ${{ vars.CLOUDFRONT_DISTRIBUTION_ID }}
+          VERSION_ARN: ${{ steps.publish.outputs.version_arn }}
+        run: |
+          aws cloudfront get-distribution-config --id "$DISTRIBUTION_ID" > $RUNNER_TEMP/dist.json
+          ETAG=$(jq -r .ETag $RUNNER_TEMP/dist.json)
+
+          # Swap every association of this function (any version) to the new version
+          jq --arg prefix "${VERSION_ARN%:*}:" --arg arn "$VERSION_ARN" '
+            def bump: if .LambdaFunctionAssociations.Items then
+                .LambdaFunctionAssociations.Items |= map(
+                  if (.LambdaFunctionARN | startswith($prefix)) then .LambdaFunctionARN = $arn else . end)
+              else . end;
+            .DistributionConfig
+            | .DefaultCacheBehavior |= bump
+            | if .CacheBehaviors.Items then .CacheBehaviors.Items |= map(bump) else . end
+          ' $RUNNER_TEMP/dist.json > $RUNNER_TEMP/config.json
+
+          if jq -e --slurpfile new $RUNNER_TEMP/config.json '.DistributionConfig == $new[0]' $RUNNER_TEMP/dist.json > /dev/null; then
+            echo "::warning::No association for ${VERSION_ARN%:*} found on $DISTRIBUTION_ID. Attach it once in the console first."
+            exit 0
+          fi
+
+          aws cloudfront update-distribution \
+            --id "$DISTRIBUTION_ID" \
+            --if-match "$ETAG" \
+            --distribution-config file://$RUNNER_TEMP/config.json > /dev/null
