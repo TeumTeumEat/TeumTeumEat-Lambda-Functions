@@ -12,6 +12,8 @@ const MAX_BODY_BYTES = 1000 * 1000;
 // Already-lossy sources this large rarely fit in 1MB unless resized, so skip them up front
 const LOSSY_TYPES = new Set(['image/jpeg', 'image/webp']);
 const MAX_LOSSY_SOURCE_BYTES_WITHOUT_RESIZE = 1.5 * 1024 * 1024;
+// CloudFront keeps images 30 days (invalidate to purge), browsers 1 day (can't be purged)
+const CACHE_CONTROL = 'public, max-age=86400, s-maxage=2592000';
 
 const s3Clients = new Map();
 
@@ -23,6 +25,9 @@ export const handler = async (event) => {
   // Skip non-images before downloading them from S3
   const contentType = response.headers['content-type']?.[0]?.value ?? '';
   if (!contentType.startsWith('image/')) return response;
+
+  // Applies to originals and resized images alike; a Cache-Control set on the S3 object wins
+  response.headers['cache-control'] ??= [{ key: 'Cache-Control', value: CACHE_CONTROL }];
 
   const params = parseParams(request.querystring);
   if (!params) return response;
